@@ -29,11 +29,11 @@ A Python script to visualize EmotiBit sensor data with music playback annotation
    - EmotiBit files: `*_XX.csv` where XX is the signal type (e.g., `data_AX.csv`)
    - Music schedule: Excel with columns [time, song_name]
 
-3. **Run the script**:
+3. **Run the notebook**:
 
-   ```bash
-   python emotibit_visualization.py
-   ```
+   - Open Jupyter Notebook or JupyterLab
+   - Navigate to the notebook file
+   - Run all cells (Cell → Run All)
 
 ## Output
 
