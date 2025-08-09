@@ -96,7 +96,7 @@ def load_emotibit_data(folder_path, signals_to_plot):
 
 def load_music_schedule(file_path, experiment_date_str, data_folder_path):
     """
-    Loads the schedule, identifies the start of the music session, the end of the session,
+    Loads the schedule from a CSV file, includes the new 'Score' column,
     and prepares annotations for each specific time point.
     """
     print(f"--- Starting Schedule Loading from '{file_path}' ---")
@@ -104,12 +104,18 @@ def load_music_schedule(file_path, experiment_date_str, data_folder_path):
         print(f"Info: Schedule file not found. Plots will not have annotations.")
         return None
     try:
-        df_schedule = pd.read_excel(file_path, header=0, usecols=[0, 1, 2], names=['time_str', 'song_artist', 'observation'])
+        # Read from CSV, now including the 'score' column
+        df_schedule = pd.read_csv(
+            file_path, 
+            header=0, 
+            usecols=[0, 1, 2, 3], 
+            names=['time_str', 'song_artist', 'score', 'observation']
+        )
         df_schedule.dropna(how='all', inplace=True)
         if df_schedule.empty:
             return None
     except Exception as e:
-        print(f"Error: Failed to read schedule Excel file: {e}")
+        print(f"Error: Failed to read schedule CSV file: {e}")
         return None
 
     is_afternoon = 'afternoon' in data_folder_path.lower()
@@ -121,7 +127,15 @@ def load_music_schedule(file_path, experiment_date_str, data_folder_path):
     final_end_time = None
 
     def parse_time(time_str, date_str, is_pm):
-        time_obj = datetime.datetime.strptime(time_str, '%H:%M:%S').time() if ':' in time_str[2:] else datetime.datetime.strptime(time_str, '%H:%M').time()
+         # Clean the string by removing AM/PM suffixes, case-insensitively
+        cleaned_time_str = time_str.lower().replace('am', '').replace('pm', '').strip()
+        try:
+            # First, try to parse with seconds (e.g., '10:15:30')
+            time_obj = datetime.datetime.strptime(cleaned_time_str, '%H:%M:%S').time()
+        except ValueError:
+            # If that fails, try to parse without seconds (e.g., '11:15')
+            time_obj = datetime.datetime.strptime(cleaned_time_str, '%H:%M').time()
+        
         hour = time_obj.hour
         if is_pm and 1 <= hour <= 11:
             hour += 12
@@ -129,14 +143,15 @@ def load_music_schedule(file_path, experiment_date_str, data_folder_path):
         dt_naive = datetime.datetime.strptime(full_datetime_str, '%Y%m%d %H:%M:%S')
         return pd.Timestamp(dt_naive, tz='US/Eastern')
 
-    # Process all rows to build a list of events
     all_events = []
     for index, row in df_schedule.iterrows():
         try:
             current_row_time = parse_time(str(row['time_str']).strip(), experiment_date_str, is_afternoon)
-            song_artist = str(row['song_artist']).strip() if pd.notna(row['song_artist']) else '–'
-            observation = str(row['observation']).strip() if pd.notna(row['observation']) else ''
-            all_events.append({'time': current_row_time, 'song': song_artist, 'obs': observation})
+            # Handle blank cells for song_artist
+            song_artist = str(row['song_artist']).strip() if pd.notna(row['song_artist']) else ""
+            score = str(row['score']).strip() if pd.notna(row['score']) else ""
+            observation = str(row['observation']).strip() if pd.notna(row['observation']) else ""
+            all_events.append({'time': current_row_time, 'song': song_artist, 'score': score, 'obs': observation})
         except (ValueError, TypeError) as e:
             print(f"Warning: Could not parse time '{row['time_str']}' on Excel row {index+2}. Skipping. Error: {e}")
             continue
@@ -144,22 +159,32 @@ def load_music_schedule(file_path, experiment_date_str, data_folder_path):
     if not all_events:
         return None
 
-    # Determine the start of the music session (first non-'–' song)
     for event in all_events:
-        if event['song'] != '–':
+        # A song start is now a non-empty cell
+        if event['song']:
             first_song_start_time = event['time']
             print(f"  - Music session starts at: {first_song_start_time.strftime('%H:%M:%S')}")
             break
 
-    # The final end time is the timestamp of the last row
     final_end_time = all_events[-1]['time']
     print(f"  - Music session ends at: {final_end_time.strftime('%H:%M:%S')}")
 
-    # Create annotations for ALL rows
     for event in all_events:
-        combined_text = f"{event['song']}\n{event['obs']}".strip()
+        # Build the annotation text, now including the score
+        text_parts = []
+        if event['song']:
+            text_parts.append(event['song'])
+        if event['score']:
+            text_parts.append(f"(Score: {event['score']})")
+        if event['obs']:
+            text_parts.append(event['obs'])
+        combined_text = "\n".join(text_parts)
+        
         annotations.append({'time': event['time'], 'text': combined_text})
-        print(f"  - Created Annotation at: {event['time'].strftime('%H:%M:%S')} with text: \"{event['song']}\"")
+        print(f"  - Created Annotation at: {event['time'].strftime('%H:%M:%S')}")
+        print(f"    - Song: {event['song'] or 'N/A'}")
+        print(f"    - Score: {event['score'] or 'N/A'}")
+        print(f"    - Obs.: {event['obs'] or 'N/A'}")
 
     return {'annotations': annotations, 'music_start': first_song_start_time, 'music_end': final_end_time}
 
@@ -228,7 +253,7 @@ def process_folder(folder_path):
     print(f"\n{'='*80}\nProcessing folder: {folder_path}\n{'='*80}")
     
     emotibit_data_path = folder_path
-    music_schedule_path = os.path.join(folder_path, 'music.xlsx')
+    music_schedule_path = glob.glob(os.path.join(folder_path, '* Combined Observations.csv'))[0]
     output_folder_path = os.path.join(folder_path, 'plots')
     
     if not os.path.isdir(emotibit_data_path):
