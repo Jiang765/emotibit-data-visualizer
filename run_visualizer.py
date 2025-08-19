@@ -12,7 +12,7 @@ import sys
 
 # 1. Root Dataset Folder
 #    This script will process all subfolders under this directory.
-ROOT_DATASET_FOLDER = '../PwD dataset'
+ROOT_DATASET_FOLDER = '../PwD dataset-2'
 
 # 2. Channels and Descriptions
 CHANNELS = {
@@ -159,15 +159,22 @@ def load_music_schedule(file_path, experiment_date_str, data_folder_path):
     if not all_events:
         return None
 
+    # Determine the start and end of the music session
     for event in all_events:
-        # A song start is now a non-empty cell
-        if event['song']:
+        # First non-empty song marks the start
+        if event['song'] and first_song_start_time is None:
             first_song_start_time = event['time']
             print(f"  - Music session starts at: {first_song_start_time.strftime('%H:%M:%S')}")
-            break
+        
+        # "Music end" in the observation column marks the end
+        if 'music end' in event['obs'].lower():
+            final_end_time = event['time']
+            print(f"  - Music session ends at: {final_end_time.strftime('%H:%M:%S')}")
+            break # Stop searching once found
 
-    final_end_time = all_events[-1]['time']
-    print(f"  - Music session ends at: {final_end_time.strftime('%H:%M:%S')}")
+    if final_end_time is None:
+        final_end_time = all_events[-1]['time']
+        print(f"  - Music session ends at: {final_end_time.strftime('%H:%M:%S')}")
 
     for event in all_events:
         # Build the annotation text, now including the score
